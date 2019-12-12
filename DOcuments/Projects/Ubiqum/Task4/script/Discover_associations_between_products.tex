@@ -1,0 +1,299 @@
+\documentclass[]{article}
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\usepackage{fixltx2e} % provides \textsubscript
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else % if luatex or xelatex
+  \ifxetex
+    \usepackage{mathspec}
+  \else
+    \usepackage{fontspec}
+  \fi
+  \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+\fi
+% use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+% use microtype if available
+\IfFileExists{microtype.sty}{%
+\usepackage{microtype}
+\UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\hypersetup{unicode=true,
+            pdftitle={DISCOVER ASSOCIATIONS BETWEEN PRODUCTS},
+            pdfauthor={Kevin Bergmeijer and Alejandro Rojo},
+            pdfborder={0 0 0},
+            breaklinks=true}
+\urlstyle{same}  % don't use monospace font for urls
+\usepackage{graphicx}
+% grffile has become a legacy package: https://ctan.org/pkg/grffile
+\IfFileExists{grffile.sty}{%
+\usepackage{grffile}
+}{}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+\IfFileExists{parskip.sty}{%
+\usepackage{parskip}
+}{% else
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+}
+\setlength{\emergencystretch}{3em}  % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{0}
+% Redefines (sub)paragraphs to behave more like sections
+\ifx\paragraph\undefined\else
+\let\oldparagraph\paragraph
+\renewcommand{\paragraph}[1]{\oldparagraph{#1}\mbox{}}
+\fi
+\ifx\subparagraph\undefined\else
+\let\oldsubparagraph\subparagraph
+\renewcommand{\subparagraph}[1]{\oldsubparagraph{#1}\mbox{}}
+\fi
+
+%%% Use protect on footnotes to avoid problems with footnotes in titles
+\let\rmarkdownfootnote\footnote%
+\def\footnote{\protect\rmarkdownfootnote}
+
+%%% Change title format to be more compact
+\usepackage{titling}
+
+% Create subtitle command for use in maketitle
+\providecommand{\subtitle}[1]{
+  \posttitle{
+    \begin{center}\large#1\end{center}
+    }
+}
+
+\setlength{\droptitle}{-2em}
+
+  \title{DISCOVER ASSOCIATIONS BETWEEN PRODUCTS}
+    \pretitle{\vspace{\droptitle}\centering\huge}
+  \posttitle{\par}
+    \author{Kevin Bergmeijer and Alejandro Rojo}
+    \preauthor{\centering\large\emph}
+  \postauthor{\par}
+      \predate{\centering\large\emph}
+  \postdate{\par}
+    \date{11/12/2019}
+
+
+\begin{document}
+\maketitle
+
+\hypertarget{introduction}{%
+\section{Introduction}\label{introduction}}
+
+This report will show the \emph{basket market analysis} to better
+understand the clientele that Electronidex -- a start-up electronics
+online retailer- is currently serving. The final goal is advice and
+discuss if Electronidex would be an optimal acquisition based on the
+findings shown in this report.
+
+\hypertarget{objectives}{%
+\paragraph{Objectives}\label{objectives}}
+
+The objectives of this inform are the following:
+
+\begin{itemize}
+\tightlist
+\item
+  Find patterns or item relationships within transactions.
+\item
+  Debate if should Blackwell acquire Electronidex.
+\item
+  Make recommendations about this possible acquisition.
+\end{itemize}
+
+\hypertarget{materials}{%
+\paragraph{Materials}\label{materials}}
+
+For the development of this exercise the data sets provided by Danielle
+Sherman via e-mail in .csv and pdf. formats will be used, consisting of
+the following documents:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{ElectronidexTransactions2017.csv} -- This csv file contains a
+  record of one month (30 days) of 9835 online transactions and which
+  items were purchased out of the 125 products that Electronidex sells.
+\item
+  \emph{ElectronidexItems2017.pdf} -- This pdf file contains a list of
+  the 125 products that Electronidex sells broken down into 17 product
+  types.
+\item
+  \emph{existingprodutattributes2017.csv} -- This csv file contains
+  information about product features, reviews and historical sales
+  information. This file has been rescued from the last task.
+\end{itemize}
+
+\hypertarget{data-exploration}{%
+\section{Data Exploration}\label{data-exploration}}
+
+For the development of this analysis, initially the databases have been
+imported and worked on a sparse matrix that included 98355 observations
+(transactions) on 125 attributes (product types). It supposes 43104
+products bought in one month by Electronidex.
+
+\hypertarget{cleaning-data}{%
+\paragraph{Cleaning data}\label{cleaning-data}}
+
+It has been removed to transactions because their respective rows
+(\emph{8707}\&\emph{9506}) were empty (missing data).
+
+\hypertarget{categorizing-the-dataset}{%
+\paragraph{Categorizing the dataset}\label{categorizing-the-dataset}}
+
+In a first approximation, the product names have been changed by their
+product types, keeping the 17 original categories given by Electronidex.
+Also, the items have been listed by brand to explore the data. It was
+tried to make a \emph{gaming} category, but in a later analysis was
+noticed that there were no relevant results.
+
+\includegraphics{Discover_associations_between_products_files/figure-latex/unnamed-chunk-2-1.pdf}
+\includegraphics{Discover_associations_between_products_files/figure-latex/unnamed-chunk-2-2.pdf}
+
+\hypertarget{creating-new-groups-retailers-and-corporate}{%
+\section{Creating new groups: retailers and
+corporate}\label{creating-new-groups-retailers-and-corporate}}
+
+Before starting the search of rules, has been observed that clients are
+divided in two classes by the kind of buy that they make: retailers and
+corporate. For example, some customers bought 7 desktops or 3 printers.
+That is not a normal way to electronic products for a person, but it can
+be understood in a company context. So, for a better analysis, the
+sample has been split in that groups. For do it, four product types were
+categorized as \textbf{\emph{Main items}} (\emph{Laptops, Desktops,
+Tablet} and \emph{Printer}). The rest of the products were categorized
+as \textbf{\emph{Extra items}}.
+
+The following rules were established to catalogue transactions:
+
+\begin{itemize}
+\tightlist
+\item
+  If the transaction included more than one main item, it was listed as
+  corporate (B2B).
+\item
+  If the transaction included four extra items, it was also listed as
+  corporate (B2B).
+\item
+  All other transactions were catalogued as retailers (B2C).
+\end{itemize}
+
+Has been found that 5327 of the transactions were B2B (54,17\%) and 4506
+were B2C (45,83\%). Talking about the number of total products sold, B2B
+suppose 34867 (80,89\%) of the sold items and B2C the other 8237
+(19,11\%).
+
+\includegraphics{Discover_associations_between_products_files/figure-latex/unnamed-chunk-4-1.pdf}
+\includegraphics{Discover_associations_between_products_files/figure-latex/unnamed-chunk-4-2.pdf}
+\includegraphics{Discover_associations_between_products_files/figure-latex/unnamed-chunk-4-3.pdf}
+\includegraphics{Discover_associations_between_products_files/figure-latex/unnamed-chunk-4-4.pdf}
+
+\hypertarget{retail-transactions}{%
+\section{Retail transactions}\label{retail-transactions}}
+
+To create the rules, following parameters has been set:
+
+\begin{itemize}
+\tightlist
+\item
+  Support=0.02
+\item
+  Confidence=0.02
+\end{itemize}
+
+The redundant rules were removed from the results. Here are shown the
+most relevant rules sort by lift, support and confidence. Any relevant
+rule about market basket associations has been noticed for the retail
+transactions.
+
+\includegraphics{Discover_associations_between_products_files/figure-latex/unnamed-chunk-5-1.pdf}
+\includegraphics{Discover_associations_between_products_files/figure-latex/unnamed-chunk-5-2.pdf}
+
+\hypertarget{corporate-transacions}{%
+\section{Corporate transacions}\label{corporate-transacions}}
+
+To create the rules, following parameters has been set:
+
+\begin{itemize}
+\tightlist
+\item
+  Support=0.02
+\item
+  Confidence=0.02
+\end{itemize}
+
+The redundant rules were removed from the results. Here are shown the
+most relevant rules sort by lift, support and confidence.
+
+\includegraphics{Discover_associations_between_products_files/figure-latex/unnamed-chunk-6-1.pdf}
+\includegraphics{Discover_associations_between_products_files/figure-latex/unnamed-chunk-6-2.pdf}
+
+\textbf{Any relevant rule about market basket associations has been
+noticed for the corporate transactions.}
+
+\hypertarget{conclusions}{%
+\section{Conclusions}\label{conclusions}}
+
+\begin{itemize}
+\tightlist
+\item
+  First of all, this dataset used is a sample of the transactions made
+  in one month by Electronidex. The results are not considered as
+  absolute because they can be biased. Therefore, these conclusions
+  should be thought of as something indicative.
+\item
+  Have been observed some rules as a result of the market basket
+  associations. These were considered Irrelevant Rules because they were
+  not helpful or were obvious. If the dataset will be expanded with a
+  greater number of transactions and more qualitative / quantitative
+  information about the transactions (price or location of the client,
+  for example) it should be re-analysed to find relevant results.
+\item
+  Electronidex is a company in which more than half of sales are
+  corporate (B2B). Blackwell does not focus on this kind of customer
+  (store sales weigh heavily, as seen in previous reports). It is
+  considered interesting this way as a possibility to expand the
+  business and diversify the type of customers. On the other hand, B2B
+  sales have lower profit margins.
+\item
+  It has been observed that in the Electronidex product portfolio there
+  are a large number of items that are catalogued as for gamers. It is
+  considered to be a booming market (e-Sports outperform other classic
+  sports in viewers). The third best-selling product by Blackwell is a
+  console, so it makes sense to sell other products focused on this
+  audience such as specialized computers (desktop or laptop, mouse,
+  keyboard, monitor, etc.).
+\item
+  Electronidex also sells many of the products that were raised within a
+  possible new portfolio for Blackwell (iMac is a clear example of
+  this). In addition, these are among its best-selling products (as also
+  was predicted in a previous report). We believe that this acquisition
+  is aligned with the previous strategy set by Blackwell and that it
+  would accelerate its implementation and minimize its risks.
+\item
+  Electronidex sold 2109 Acer products in the month analysed. Previously
+  it was also raised whether to sell Acer or Sony products. The fact
+  that they already sell one of these brands could mean some kind of
+  strategic partnership for Blackwell.
+\item
+  For all the above, the acquisition of Electronidex by Blackwell is
+  recommended.
+\end{itemize}
+
+
+\end{document}

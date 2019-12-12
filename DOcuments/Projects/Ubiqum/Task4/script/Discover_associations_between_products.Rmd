@@ -1,0 +1,429 @@
+---
+title: "DISCOVER ASSOCIATIONS BETWEEN PRODUCTS"
+author: "Kevin Bergmeijer and Alejandro Rojo"
+department: "Data Analysis Department"
+date: "11/12/2019"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r, include=FALSE, echo=FALSE}
+
+#Install packages & load data
+
+
+pacman::p_load(pacman, plyr, caret, dplyr, ggplot2,shiny, caTools, rmarkdown, usethis, fs, reshape2, devtools, outliers, corrplot, arules, arulesViz,readxl)
+
+# source_gist(id='706a28f832a33e90283b')
+Electronidex <- read.transactions("C:/Users/Burbu/Downloads/ElectronidexTransactions2017.csv", 
+                         format = c("basket", "single"), rm.duplicates = FALSE, sep = ",", header = FALSE)
+Categories <- read.csv("C:/Users/Burbu/Downloads/categories.csv")
+Categories <- Categories[1:125,]
+Categories$Category <- as.character(Categories$Category)
+Categories$Brand <- as.character(Categories$Brand)
+
+Electronidex@itemInfo$labels <- Categories$ProductType
+Electronidex@itemInfo$category <- Categories$Category
+
+# Creating a market basket for categories and another one for brands
+
+# category_basket <- aggregate(Electronidex, Categories$Category, na.rm= FALSE)
+brand_basket <- aggregate(Electronidex, Categories$Brand)
+summary(brand_basket)
+
+# Creating a sparse matrix
+
+elec_mat <- as(Electronidex, "matrix")
+elec_df <- as.data.frame(elec_mat)
+
+# Turning into a sparematrix of 1s and 0s.
+for (i in 1:ncol(elec_df)) {
+    elec_df[, i] <- as.integer(elec_df[, i])
+}
+
+```
+
+# Introduction
+This report will show the *basket market analysis* to better understand the clientele that Electronidex – a start-up electronics online retailer- is currently serving. The final goal is advice and discuss if Electronidex would be an optimal acquisition based on the findings shown in this report. 
+
+#### Objectives
+The objectives of this inform are the following:
+
+* Find patterns or item relationships within transactions.
+* Debate if should Blackwell acquire Electronidex.
+* Make recommendations about this possible acquisition.
+
+
+#### Materials
+For the development of this exercise the data sets provided by Danielle Sherman via e-mail in .csv and pdf. formats will be used, consisting of the following documents:
+
+* _ElectronidexTransactions2017.csv_ – This csv file contains a record of one month (30 days) of 9835 online transactions and which items were purchased out of the 125 products that Electronidex sells.
+* _ElectronidexItems2017.pdf_ – This pdf file contains a list of the 125 products that Electronidex sells broken down into 17 product types. 
+* _existingprodutattributes2017.csv_ – This csv file contains information about product features, reviews and historical sales information. This file has been rescued from the last task.
+
+
+# Data Exploration
+For the development of this analysis, initially the databases have been imported and worked on a sparse matrix that included 98355 observations (transactions) on 125 attributes (product types). It supposes 43104 products bought in one month by Electronidex. 
+
+
+#### Cleaning data
+It has been removed to transactions because their respective rows (_8707_&_9506_) were empty (missing data). 
+
+#### Categorizing the dataset 
+In a first approximation, the product names have been changed by their product types, keeping the 17 original categories given by Electronidex. Also, the items have been listed by brand to explore the data. It was tried to make a _gaming_ category, but in a later analysis was noticed that there were no relevant results. 
+
+``` {r, echo=FALSE, warning=FALSE}
+# Absolute Item Frequency Plot - All type of customers
+itemFrequencyPlot(Electronidex, topN=15, 
+                  type="absolute", col="wheat2",xlab="Item name", 
+                  ylab="Frequency (absolute)", main="All type of customers - Frequency Plot") 
+
+
+# Relative Item Frequency Plot - All type of customers
+itemFrequencyPlot(Electronidex, topN=15, 
+                  type="relative", col="lightcyan2", xlab="Item name", 
+                  ylab="Frequency (relative)", main="All type of customers -Relative Frequency                     Plot")
+
+```
+
+```{r, include=FALSE, echo=FALSE}
+### Feature Engineering:
+
+# Counting number of items
+nitems <- c()
+for (i in 1:nrow(elec_df)) {
+    nitems <- c(nitems, sum(elec_df[i, ]))
+}
+
+
+elec_df$nitems <- nitems
+
+# Assigning category Laptop:
+elec_df$laptops <- elec_df[, which(colnames(elec_df) == "LG Touchscreen Laptop")] + 
+    elec_df[, which(colnames(elec_df) == "Acer Aspire")] + 
+    elec_df[, which(colnames(elec_df) == "HP Laptop")] + 
+    elec_df[, which(colnames(elec_df) == 
+    "ASUS Chromebook")] + elec_df[, which(colnames(elec_df) == "Apple Macbook Pro")] + 
+    elec_df[, which(colnames(elec_df) == "Apple MacBook Air")] + elec_df[, 
+    which(colnames(elec_df) == "Dell Laptop")] +elec_df[, which(colnames(elec_df) ==
+    "HP Notebook Touchscreen Laptop PC")] + elec_df[, which(colnames(elec_df) == 
+    "Eluktronics Pro Gaming Laptop")] + elec_df[, which(colnames(elec_df) == 
+    "Alienware AW17R4-7345SLV-PUS 17\" Laptop")] 
+
+# Assigning category Desktop:
+elec_df$desktop <- elec_df[, which(colnames(elec_df) == "Lenovo Desktop Computer")]        + elec_df[, which(colnames(elec_df) == "iMac")] + elec_df[, which(colnames(elec_df)     == "HP Desktop")] + elec_df[, which(colnames(elec_df) == "ASUS Desktop")] + 
+    elec_df[, which(colnames(elec_df) == "Dell Desktop")] +
+    elec_df[, which(colnames(elec_df) == 
+    "Intel Desktop")] + elec_df[, which(colnames(elec_df) == "Acer Desktop")] + 
+    elec_df[, which(colnames(elec_df) == "CYBERPOWER Gamer Desktop")] + elec_df[, 
+    which(colnames(elec_df) == "Dell 2 Desktop")]
+
+# Assigning category Tablet:
+elec_df$tablet <- elec_df[, which(colnames(elec_df) == "iPad")] + elec_df[, 
+    which(colnames(elec_df) == "iPad Pro")] + elec_df[, which(colnames(elec_df) == 
+    "Fire HD Tablet")] + elec_df[, which(colnames(elec_df) == "Samsung Galaxy Tab")] + 
+    elec_df[, which(colnames(elec_df) == "Kindle")]
+    
+# Assigning category Printer:    
+elec_df$printer <- elec_df[, which(colnames(elec_df) == "Epson Printer")] +                elec_df[, which(colnames(elec_df) == "HP Wireless Printer")] + 
+    elec_df[, which(colnames(elec_df) == 
+    "Canon Office Printer")] + elec_df[, which(colnames(elec_df) == "Brother Printer")]     +   elec_df[, which(colnames(elec_df) == "DYMO Label Manker")]
+    
+# Assigning category Game "Main":
+elec_df$game_main <- elec_df[, which(colnames(elec_df) == 
+    "Eluktronics Pro Gaming Laptop")] + elec_df[, which(colnames(elec_df) == 
+    "Alienware AW17R4-7345SLV-PUS 17\" Laptop")] + elec_df[, which(colnames(elec_df) ==
+    "CYBERPOWER Gamer Desktop")]
+
+# Assigning category Game "Extra"
+elec_df$game_extra <- elec_df[, which(colnames(elec_df) ==
+    "AOC Monitor")] + elec_df[, which(colnames(elec_df) == 
+    "Computer Game")] + elec_df[, which(colnames(elec_df) ==
+    "Gaming Mouse Professional")] + elec_df[, which(colnames(elec_df) == 
+    "Zombie Gaming Headset")] 
+    
+
+# Main categories
+    elec_df$main_items <- elec_df$printer + elec_df$laptops + elec_df$desktop +            elec_df$tablet
+    
+# Extra items   
+elec_df$extra_items <- elec_df$nitems - elec_df$main_items 
+
+# Game products
+
+elec_df$all_game <- elec_df$game_extra + elec_df$game_main
+
+# Checking if companies buy also gaming products. Giving 10 points to main products and 1000 points to gaming products.
+
+### There are more than 2000 transactions that have more than 2 main products, so which are indentified as B2B company but still bought 1 or more "Game" products. 
+
+elec_df$value <- (100 * elec_df$main_items) + elec_df$extra_items + (1000 * elec_df$all_game)
+
+
+value_points1 <- filter(elec_df, value %in% 1200:1999)
+value_points2 <- filter(elec_df, value %in% 2200:2999)
+value_points3 <- filter(elec_df, value %in% 3200:3999)
+value_points4 <- filter(elec_df, value %in% 4200:4999)
+
+total_value_points <- rbind(value_points1, value_points2, value_points3, value_points4)
+
+total_value_points <- total_value_points[,c(1:126)]
+
+trans_points <- as(total_value_points == 1, "transactions")
+
+
+summary(trans_points)
+
+
+# Assigning 10 points to main_items + 1 point to extra_items, more than 25 points could be corporate 
+
+elec_df$value_b2b <- (10 * elec_df$main_items) + elec_df$extra_items 
+
+
+# Viewing distribution of total value points
+ggplot(data = elec_df, aes(value_b2b)) + geom_density()
+
+```
+  
+# Creating new groups: retailers and corporate 
+
+Before starting the search of rules, has been observed that clients are divided in two classes by the kind of buy that they make: retailers and corporate. For example, some customers bought 7 desktops or 3 printers. That is not a normal way to electronic products for a person, but it can be understood in a company context. So, for a better analysis, the sample has been split in that groups. 
+For do it, four product types were categorized as **_Main items_** (_Laptops, Desktops, Tablet_ and _Printer_). The rest of the products were categorized as **_Extra items_**. 
+
+The following rules were established to catalogue transactions:
+
+* If the transaction included more than one main item, it was listed as corporate (B2B).
+* If the transaction included four extra items, it was also listed as corporate (B2B).
+* All other transactions were catalogued as retailers (B2C).
+
+Has been found that 5327 of the transactions were B2B (54,17%) and 4506 were B2C (45,83%). Talking about the number of total products sold, B2B suppose 34867 (80,89%) of the sold items and B2C the other 8237 (19,11%). 
+
+```{r, echo=FALSE, warning=FALSE}
+# Frequency of how often main_items are bought as one ore in pairs:
+
+main_products <- c("laptops", "desktop","printer","tablet")
+for (i in main_products){
+  print(ggplot(elec_df, aes_string(x = i)) + 
+          geom_bar(fill = "blue", bins = 100) + 
+           
+      ggtitle(paste("Histogram of",i)))
+}
+
+# # Frequency of extra_items
+# For another time= take out all the main products that have more than 0 and then exclude all redundant columns, run the previous loop and assign again the column names to to the vector/data frame 
+# 
+# test <- elec_df[,elec_df$extra_items > 0]
+
+# extra_products <- c()
+# for (i in test){
+#   print(ggplot(test, aes_string(x = i)) + 
+#           geom_bar(fill = "blue", bins = 100) + 
+#            
+#       ggtitle(paste("Histogram of",i)))
+# }
+```
+
+```{r 1, echo=FALSE, include=FALSE, warning=FALSE}
+# Making subcategories between "corporate" and "retail" customers:
+# Corporate is more than 2 main products and 5 extra_items
+
+corporate <- filter(elec_df, main_items >= 2 | extra_items >= 4)
+corporate
+
+# Cleaning the new columns we created before
+corporate <- corporate[, -which(colnames(corporate) %in% c("laptops", "desktop", 
+    "printer", "tablet", "nitems", "main_items", "value", "extra_items", "game_main",      "game_extra", "all_game", "value_b2b"))]
+
+# Filtering. Retailers will be those transactions with less than 2 main
+# products and 4 complements.
+retailer <- filter(elec_df, main_items <= 1 & extra_items <= 3)
+retailer
+
+# Cleaning
+retailer <- retailer[, -which(colnames(retailer) %in% c("laptops", "desktop", 
+    "printer", "tablet", "nitems", "main_items", "value", "extra_items", "game_main",      "game_extra", "all_game", "value_b2b"))]
+
+# Transforming the dataframe into a transaction objecte
+trans_corp <- as(corporate == 1, "transactions")
+trans_retail <- as(retailer == 1, "transactions")
+
+trans_corp
+# Inserting labels and the level category
+trans_corp@itemInfo$labels <- Categories$ProductType
+trans_corp@itemInfo$category <- Categories$Category
+
+trans_retail@itemInfo$labels <- Categories$ProductType
+trans_retail@itemInfo$category <- Categories$Category
+
+```
+  
+# Retail transactions
+
+To create the rules, following parameters has been set: 
+
+* Support=0.02
+* Confidence=0.02
+
+The redundant rules were removed from the results. Here are shown the most relevant rules sort by lift, support and confidence. 
+Any relevant rule about market basket associations has been noticed for the retail transactions. 
+
+```{r, echo=FALSE}
+
+# Absolute Item Frequency Plot - B2C
+itemFrequencyPlot(trans_retail, topN=15, 
+                  type="absolute", col="wheat2",xlab="Item name", 
+                  ylab="Frequency (absolute)", main="B2C - Absolute Item Frequency Plot")
+
+
+# Relative Item Frequency Plot - B2C
+itemFrequencyPlot(trans_retail, topN=15, 
+                  type="relative", col="lightcyan2", xlab="Item name", 
+                  ylab="Frequency (relative)", main="B2C - Relative Item Frequency Plot")
+```
+
+# Corporate transacions
+
+To create the rules, following parameters has been set: 
+
+* Support=0.02
+* Confidence=0.02
+
+The redundant rules were removed from the results. Here are shown the most relevant rules sort by lift, support and confidence. 
+
+
+```{r, echo=FALSE}
+
+# Absolute Item Frequency Plot - B2B
+itemFrequencyPlot(trans_corp, topN=15, 
+                  type="absolute", col="wheat2",xlab="Item name", 
+                  ylab="Frequency (absolute)", main="B2B - Absolute Item Frequency Plot")
+
+
+# Relative Item Frequency Plot - B2B
+itemFrequencyPlot(trans_corp, topN=15, 
+                  type="relative", col="lightcyan2", xlab="Item name", 
+                  ylab="Frequency (relative)", main="B2B - Relative Item Frequency Plot")
+```
+
+
+
+**Any relevant rule about market basket associations has been noticed for the corporate transactions.**
+
+```{r, echo=FALSE, include=FALSE}
+### Exploring rules on all transactions without splitting up putting a low general rules
+
+rule_general <- apriori(Electronidex, parameter = list(supp = 0.02, conf = 0.02, minlen = 2, maxlen = 30))
+
+# Are there any redundant rules and taking them out:
+
+redundant_rules <- subset(rule_general,(which(is.redundant(rule_general))))
+inspect(redundant_rules)
+rule_general <- rule_general[!is.redundant(rule_general)]
+
+
+# Give only lift with more than 1.1
+subrules <- rule_general[quality(rule_general)$lift > 1.1]
+inspect(subrules)
+
+
+# Here we only specifiy the top 20 rules by all the different parameters (standard has at least a combination of 2 products) 
+
+subrules_lift <- head(subrules, n = 20, by = "lift")
+subrules_support <- head(subrules, n = 20, by = "support")
+subrules_confidence <- head(subrules, n = 20, by = "confidence")
+
+# Looking for combinations that could be sold in a bundle of at least three products
+
+subrules_lift1 <- head(subrules, n = 20, by = "lift", minlen = 3)
+subrules_support1 <- head(subrules, n = 20, by = "support", minlen = 3)
+subrules_confidence1 <- head(subrules, n = 20, by = "confidence", minlen = 3)
+
+# See top rules of minimal 2
+
+inspect(subrules_lift)
+inspect(subrules_support)
+inspect(subrules_confidence)
+
+# See top rule of minimal 3
+
+inspect(subrules_lift1)
+inspect(subrules_support1)
+inspect(subrules_confidence1)
+
+# A bit of data explortation with general subrules_lift1
+
+plot(subrules_lift1, method = "paracoord")
+plot(subrules_lift1, method = "graph")
+
+plot(subrules_support1, measure = c("support", "lift"), shading = "confidence")
+plot(subrules_lift1, method = "two-key plot")
+
+plot(subrules_lift1, method = "grouped", control = list(k = 20))
+plot(subrules_lift1, method="graph", control=list(type="items", control = list(k =20, by = "confidence" )))
+
+# plot(rule_1, method="paracoord",  control=list(alpha=.5, reorder=TRUE))
+# plot(rule_1, measure=c("support","lift"),shading="confidence",interactive=T)
+
+# inspect(sort(rule_1, by = "confidence"))
+
+# ItemRules <- subset(rule_general, items %in% "iMac")
+# ItemRules
+# inspect(ItemRules, control = list(k =10))
+
+#Exploring rules on B2B 
+rule_general <- apriori(Electronidex, parameter = list(supp = 0.02, conf = 0.02, minlen = 2, maxlen = 30))
+
+# Are there any redundant rules and taking them out:
+
+redundant_rules <- subset(rule_general,(which(is.redundant(rule_general))))
+inspect(redundant_rules)
+rule_general <- rule_general[!is.redundant(rule_general)]
+
+
+# Give only lift with more than 1.1
+subrules <- rule_general[quality(rule_general)$lift > 1.1]
+inspect(subrules)
+
+
+# Here we only specifiy the top 20 rules by all the different parameters (standard has at least a combination of 2 products) 
+
+subrules_lift <- head(subrules, n = 20, by = "lift")
+subrules_support <- head(subrules, n = 20, by = "support")
+subrules_confidence <- head(subrules, n = 20, by = "confidence")
+
+# Looking for combinations that could be sold in a bundle of at least three products
+
+subrules_lift1 <- head(subrules, n = 20, by = "lift", minlen = 3)
+subrules_support1 <- head(subrules, n = 20, by = "support", minlen = 3)
+subrules_confidence1 <- head(subrules, n = 20, by = "confidence", minlen = 3)
+
+# See top rules of minimal 2
+
+inspect(subrules_lift)
+inspect(subrules_support)
+inspect(subrules_confidence)
+
+# See top rule of minimal 3
+
+inspect(subrules_lift1)
+inspect(subrules_support1)
+inspect(subrules_confidence1)
+```
+
+
+# Conclusions
+
+* First of all, this dataset used is a sample of the transactions made in one month by Electronidex. The results are not considered as absolute because they can be biased. Therefore, these conclusions should be thought of as something indicative.
+*  Have been observed some rules as a result of the market basket associations. These were considered Irrelevant Rules because they were not helpful or were obvious. If the dataset will be expanded with a greater number of transactions and more qualitative / quantitative information about the transactions (price or location of the client, for example) it should be re-analysed to find relevant results.
+* Electronidex is a company in which more than half of sales are corporate (B2B). Blackwell does not focus on this kind of customer (store sales weigh heavily, as seen in previous reports). It is considered interesting this way as a possibility to expand the business and diversify the type of customers. On the other hand, B2B sales have lower profit margins.
+* It has been observed that in the Electronidex product portfolio there are a large number of items that are catalogued as for gamers. It is considered to be a booming market (e-Sports outperform other classic sports in viewers). The third best-selling product by Blackwell is a console, so it makes sense to sell other products focused on this audience such as specialized computers (desktop or laptop, mouse, keyboard, monitor, etc.).
+* Electronidex also sells many of the products that were raised within a possible new portfolio for Blackwell (iMac is a clear example of this). In addition, these are among its best-selling products (as also was predicted in a previous report). We believe that this acquisition is aligned with the previous strategy set by Blackwell and that it would accelerate its implementation and minimize its risks.
+* Electronidex sold 2109 Acer products in the month analysed. Previously it was also raised whether to sell Acer or Sony products. The fact that they already sell one of these brands could mean some kind of strategic partnership for Blackwell.
+* For all the above, the acquisition of Electronidex by Blackwell is recommended.

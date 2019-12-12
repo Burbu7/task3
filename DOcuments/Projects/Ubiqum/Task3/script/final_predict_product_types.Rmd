@@ -1,0 +1,349 @@
+---
+title: "PREDICTING SALES VOLUMES"
+author: "Oriol Ordi and Alejandro Rojo"
+date: "2/12/2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r, include=FALSE, echo=FALSE}
+# Predict the sales in four different types of products
+# (PC, Laptops, Netbooks, Smartphones)
+# while assessing the effects service and customer reviews have on sales
+# And, of course, predict sales for the four types in the newproducts
+
+# Load necessary packages ####
+library(readr)
+library(ggplot2)
+library(lattice)
+library(corrplot)
+library(e1071)
+library(randomForest)
+library(caret)
+library(dplyr)
+library(tidyverse)
+library(reshape)
+
+# Load the datasets ####
+EPA<-read.csv("C:/Users/Burbu/Documents/Projects/Ubiqum/Task3/data/existingproductattributes2017.csv")
+NPA<-read.csv("C:/Users/Burbu/Documents/Projects/Ubiqum/Task3/data/newproductattributes2017.csv")
+EPA <- data.frame(EPA)
+NPA <- data.frame(NPA)
+
+# Data exploration ####
+summary(EPA)
+summary(NPA)
+str(EPA)
+str(NPA)
+
+# Check for missing values (NA) and remove those observations
+summary(EPA)
+# There are 15 observations that contain missing values (NA), all of them in the BestSellersRank column
+# The bestsellers column will, thus, be removed completely
+EPA$BestSellersRank <- NULL
+summary(EPA)
+
+# Check for outliers ####
+boxplot(EPA[2:ncol(EPA)])
+# Remove outliers from the dependent variable
+OutlierDataSet <- EPA
+OutlierColumn <- OutlierDataSet[,ncol(OutlierDataSet)]
+OutlierDataSet <- OutlierDataSet[OutlierColumn > (quantile(OutlierColumn)[[2]] - 1.5*IQR(OutlierColumn)),]
+OutlierDataSet <- OutlierDataSet[OutlierColumn < (quantile(OutlierColumn)[[4]] + 1.5*IQR(OutlierColumn)),]
+EPA <- OutlierDataSet
+
+# Check for duplicated observations
+sum(duplicated(EPA[-which(names(EPA) == 'ProductNum')]))
+EPA[!duplicated(EPA[-which(names(EPA) == 'ProductNum')]),]
+sum(duplicated(NPA[-which(names(NPA) == 'ProductNum')]))
+NPA[!duplicated(NPA[-which(names(NPA) == 'ProductNum')]),]
+
+# Check for duplicates without the price ####
+duplicated(EPA[c('ProductType','Price')])
+# There are duplicated values with different prices
+# The duplicated values will be merged into one single value and the price will be the mean of the duplicated values
+# Keep one of the duplicated observations (the first one, for example)
+duplicatedproductsvalues <- EPA[duplicated(EPA[,-c(2,3)]),][1,]
+# Calculate the mean of the price of the duplicated observations
+mean_duplicated <- mean(EPA$Price[duplicated(EPA[-c(2,3)])])
+# Remove the duplicated observations
+EPA <- EPA[!duplicated(EPA[-c(2,3)]),]
+# Add one of the duplicated observations (the first one that had been saved previously)
+EPA <- rbind(EPA,duplicatedproductsvalues)
+# Change the price to the mean of the price of the duplicated values
+EPA[nrow(EPA),'Price'] <- mean_duplicated
+
+# Check for rows with missing reviews ####
+nrow(EPA[which(EPA$x4StarReviews==0 & EPA$x3StarReviews == 0 & EPA$x2StarReviews == 0 & EPA$x1StarReviews == 0),])
+# There are 3 rows with missing x4,x3,x2,x1 reviews that will be removed
+EPA <- EPA[-which(EPA$x4StarReviews==0 & EPA$x3StarReviews == 0 & EPA$x2StarReviews == 0 & EPA$x1StarReviews == 0),]
+```
+
+# Introduction
+
+This report will show the sales predictions in four different product types and their relationship with service and costumer reviews. For this purpose multipl regression will be used to build machine learning models running three different algorithms (_K-NN_, _SVM_ and _Random Forest_).
+
+#### Objectives
+
+* Predict sales of four different product types: PC, Laptops, Netbooks and Smartphones.
+* Explain the services and customer reviews impact on sales of different product types.
+* Find and/or build the variables which better predicts sales volume.
+* Make recommendations to the sales department based in our results.
+
+#### Materials
+
+For the development of this exercise the data sets provided by Danielle Sherman via e-mail in .csv format will be used, consisting of the following documents:
+
+* _existingprodutattributes2017.csv_ – This csv file contains information about product features, reviews and historical sales information. This file will be used to build the predictive models.
+
+* _newproductattributtes2017.csv_ – This csv file contains information about product features and reviews, but no sales information. This is the data set where the model will be used to make the sales predictions.  
+
+# Data Exploration
+
+#### Missing values
+
+The existing products dataset has 15 observations that contain missing values (NA). Since removing 15 observations in a 80 row dataset is removing too much data, and considering that all missing values are in the same attribute (_BestSellersRank_), the best action is to remove that attribute to deal with the missing values.
+
+#### Outliers
+
+Most of the attributes have outliers, some of them a high number of outliers. Removing all the outliers fro all the attributes would result in reducing the dataset to almost no observations.  
+Therefore, only the outliers in the target variable (2 observations) are removed.
+
+#### Duplicates
+
+The dataset presents a few rows that are duplicated, except for the price and (obviously) the product number. These rows are all corresponding to the _ProductType_ "Extended Warranty" and they are assumed to be different versions of the same product.  
+Thus, to avoid overfitting of the observations, the duplicated values are all but one removed, and the remaining observation is used with the _Price_ set to the mean of all prices in the duplicated observations.
+
+#### Missing Reviews
+
+There are 3 observations that have "missing" _Star Reviews_, meaning that all the star attributes (_x4StarReviews_, _x3StarReviews_, _x2StarReviews_, _x1StarReviews_) are 0.  
+
+Since the nature of this missing data is not known, it is safer to remove those observations from the dataset.
+
+#### Abnormal Observations
+
+Plotting the _Volume_ against various indepenent variables shows some interesting insights, namely that there are some observations that don't align at all with the rest. One example of this can be seen in the next figure, where the highest value of _x1StarReviews_ doesn't align at all with the rest.
+
+``` {r, echo=FALSE, warning=FALSE}
+# Check the variables ####
+ggplot(EPA, aes(x=x1StarReviews, y = Volume)) +
+  geom_point() +
+  geom_smooth()
+
+# Removing the observations that the graphs before showed were distrustful ####
+EPA <- EPA[-which(EPA$ProductNum == 118),]
+EPA <- EPA[-which(EPA$ProductNum == 123),]
+EPA <- EPA[-which(EPA$ProductNum == 134),]
+EPA <- EPA[-which(EPA$ProductNum == 135),]
+```
+  
+The observations that don't align for the model are, thus, removed from the dataset.
+
+#### Correlation
+
+To check correlation, including the _ProductType_, the first thing that has to be done is to dummify the _ProductType_.  
+Once the _ProductType_ is dummified, the correlation between variables can be checked:  
+```{r, echo=FALSE}
+# Placing the dependent variable in the first position ####
+EPA <- subset(EPA, select=c(ncol(EPA),1:(ncol(EPA)-1)))
+
+# Check correlation
+# Dummify with feature engineering
+newDataFrame <- dummyVars(" ~ .", data = EPA)
+EPA_dummy <- data.frame(predict(newDataFrame, newdata = EPA))
+CorrData <- cor(EPA_dummy)
+# Check correlation with corrplot
+corrplot(CorrData, type='upper', method='pie')
+```
+  
+In the correlation plot it can be seen that none of the _Product Types_ are correlated with the _Volume_. The next figure asserts this affirmation:
+```{r, echo=FALSE}
+# Plot the volume of sales by product, colored by product type ####
+ggplot(EPA, aes(x=reorder(ProductNum, -Volume), y = Volume, fill = ProductType)) + 
+  geom_col(position = 'dodge') +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab('Product Number') +
+  ylab('Volume') +
+  ggtitle('Volume of sales by product') +
+  labs(fill = 'Product Type')
+```
+  
+In the last figure, the sales _Volume_ are shown by _Product Number_, grouped (colored) by _Product Type_ in descending order. As it can be seen, the color distribution is spread out, meaning that there is little relation between the _Product Types_ and the sales _Volume_.  
+
+Once the correlation between _Volume_ and _Product Type_ is assumed to be nonexistent, the correlation between other attributes and _Volume_ are checked, as well as the collinearity between attributes, and the correlations higher than 0.85 are selected to take into consideration:
+```{r, echo=FALSE}
+# Remove attributes ####
+# Look for high correlation with the dependent variable and remove attributes
+corrDataFrame <- data.frame(CorrData)
+corrDataFrame[lower.tri(corrDataFrame,diag=TRUE)] <- NA
+correlations <- corrDataFrame %>%
+  rownames_to_column("id") %>%
+  gather(key = "key", value = "value", -id) %>%
+  filter(value > 0.85 | value < -0.85)
+correlations
+```
+  
+After so much data preprocessing and eliminating observations, the variables start to show high collinearity.  
+
+First of all, the _x5StarReviews_ has a correlation coefficient of 1 with the target variable, meaning that, most likely, the data was tampered with and this attribute should not be trusted.  
+
+Then, as the correlation coefficients show, all the _Star Review_ attributes are highly collinear.  
+
+Besides that, it is noteworthy that the _PositiveServiceReview_ attribute has high correlation with the target variable and, thus, it is possibly the best suited to explain the model.  
+
+The _Star Review_ variables have also semi-high correlation with the target variable, but, since they are all collinear, only one of them can be used. In this case, it will be the _x4StarReviews_, which is the most correlated with the _Volume_.
+
+#### Feature engineering
+
+New features have been built and tried with the goal of finding if there are better predictors for sales volume. Various combinations of different attributes (e.g. _Product Volume_, _Density_, the difference between _Positive Service Reviews_ and _Negative Service Reviews_, different forms of variable scaling, etc.).
+
+```{r, echo=FALSE, include=FALSE}
+# Feature Engineering ####
+EPA$TotalServiceReviews <- EPA$PositiveServiceReview + EPA$NegativeServiceReview
+
+# Dummify with feature engineering
+newDataFrame <- dummyVars(" ~ .", data = EPA)
+EPA_dummy <- data.frame(predict(newDataFrame, newdata = EPA))
+
+# Define training and testing sets ####
+set.seed(107)
+inTrain <- createDataPartition(y=EPA_dummy$Volume,p=0.75,list=FALSE)
+training <- EPA_dummy[inTrain,]
+testing <- EPA_dummy[-inTrain,]
+nrow(training)
+nrow(testing)
+
+# Modelling the training data and testing with the test data ####
+# Set the model training method to a 1 time repeated cross validation
+ctrl <- trainControl(method = "repeatedcv",
+                     number = 10,
+                     repeats = 3)
+# Train the model
+a <- c("Volume ~ x4StarReviews", "Volume ~ x4StarReviews + PositiveServiceReview", "Volume ~ x4StarReviews + TotalServiceReviews", "Volume ~ PositiveServiceReview")
+b <- c("knn", "rf","svmLinear")
+compare_var_mod <- c()
+compare_models <- c()
+for ( i in a) {
+  for (j in b) {
+    model <- train(formula(i), data = training, method = j, trControl = ctrl, preProcess = c('center','scale'), tuneLength = 20)
+    pred <- predict(model, newdata = testing)
+    pred_metric <- postResample(testing$Volume, pred)
+    compare_models <- c(compare_models,model)
+    compare_var_mod <- cbind(compare_var_mod , pred_metric)
+  }
+}
+names_var <- c()
+for (i in a) {
+  for(j in b) {
+    names_var <- append(names_var,paste(i,j))
+  }
+}
+colnames(compare_var_mod) <- names_var
+compare_var_mod
+# Melt the error metrics
+compare_var_mod_melt <- melt(compare_var_mod, varnames=c("metric","model"))
+compare_var_mod_melt <- as.data.frame(compare_var_mod_melt)
+compare_var_mod_melt
+```
+
+# Modelling
+To find a model that best suits the data, several algorithms (namely _K-nn_, _Random Forest_ and _SVM_) are used on various combinations of variables.  
+
+For the sake of simplification, only a few relevant variables are included in the following plot (although many more have been tried).
+
+``` {r, echo=FALSE}
+
+# Plot the error metrics
+ggplot(compare_var_mod_melt, aes(x=model, y=value, fill = model)) +
+  geom_col() +
+  facet_grid(metric~., scales="free") +
+  theme(axis.text.x = element_blank(), axis.ticks = element_blank()) +
+  xlab('') +
+  ggtitle('Error metrics comparison') +
+  labs(fill = 'Features and model used')
+```
+  
+The best model is the one where Volume is explained by _x4StarReviews_ and _TotalServiceReviews_ (_TotalServiceReviews_ is the addition of _PositiveServiceReviews_ and _NegativeServiceReviews_) and the algorithm used is _Random Forest_. The RMSE in this case is 118, the R-squared 0,96 and the MAE 74.  
+
+The following table shows the numerical results of the graph above:
+
+``` {r, echo=FALSE}
+compare_var_mod_melt
+```
+
+#### Discussion
+
+The Dataset presents very few observations. For practical purposes, a model that works well within the limitation of the Dataset has been found. However, due to the nature of the Dataset, a slight change in the way that the model is built presents enormous differences in its outcome.  
+
+Thus, this model should be used with care, taking into account that the model would work much better with a much larger Dataset.
+
+# Results
+
+Once the model is defined, the predictions for the new products can be easily calculated.
+
+```{r, echo=FALSE, include=FALSE}
+# Predict for the new products ####
+# Retrain and retest the model using the best features and algorithm
+model <- train(Volume ~ x4StarReviews + TotalServiceReviews, data = training, method = 'rf', trControl = ctrl, preProcess = c('center','scale'), tuneLength=20)
+#model
+pred <- predict(model, newdata = testing)
+pred_metric <- postResample(testing$Volume, pred)
+#pred_metric
+error <- data.frame(pred - testing$Volume)
+colnames(error) <- c("err")
+#ggplot(error, aes(err)) + 
+#  geom_histogram(bins=20)
+# Make predictions for the new attributes
+NPA_undummy <- NPA
+newDataFrame <- dummyVars(" ~ .", data = NPA)
+NPA <- data.frame(predict(newDataFrame, newdata = NPA))
+NPA <- subset(NPA, select=c(ncol(NPA),1:(ncol(NPA)-1)))
+NPA$TotalServiceReviews <- NPA$PositiveServiceReview + NPA$NegativeServiceReview
+NPA$BestSellersRank <- NULL
+predictionsnew <- predict(model,NPA)
+predictionsnew
+NPA$Volume <- predictionsnew
+```
+  
+Using the predictions, a calculation can be easily done to know the predicted sales volume for the 4 product types of interest, as can be seen in the following figure:
+  
+```{r, echo=FALSE}
+# Predictions by product type ####
+# Laptop predictions
+NPA <- NPA[NPA$ProductTypeLaptop == 1 | NPA$ProductTypePC == 1 |NPA$ProductTypeNetbook == 1 | NPA$ProductTypeSmartphone == 1,]
+NPA_undummy$Volume <- predictionsnew
+NPA_undummy <- NPA_undummy[NPA_undummy$ProductType == 'PC' | NPA_undummy$ProductType == 'Laptop' |NPA_undummy$ProductType == 'Netbook' | NPA_undummy$ProductType == 'Smartphone',]
+
+ggplot(NPA_undummy, aes(x = ProductType,y = Volume, fill = ProductType)) +
+  geom_col()
+```
+  
+In the following chart it can be seen the impact of customer and service reviews on sales volume. It is observed that when more _Positive Service Reviews_ and _4 Star Reviews_ there are, the sales volume is higher. 
+
+```{r, echo=FALSE}
+EPA2 <-read.csv("C:/Users/Burbu/Documents/Projects/Ubiqum/Task3/data/existingproductattributes2017.csv")
+# Remove outliers from the dependent variable
+OutlierDataSet <- EPA2
+OutlierColumn <- OutlierDataSet[,ncol(OutlierDataSet)]
+OutlierDataSet <- OutlierDataSet[OutlierColumn > (quantile(OutlierColumn)[[2]] - 1.5*IQR(OutlierColumn)),]
+OutlierDataSet <- OutlierDataSet[OutlierColumn < (quantile(OutlierColumn)[[4]] + 1.5*IQR(OutlierColumn)),]
+EPA2 <- OutlierDataSet
+
+ggplot(EPA2, aes(x =PositiveServiceReview, y =x4StarReviews,color = ProductType)) +
+  geom_point(aes(size=Volume)) +
+  xlab("Postive Service Reviews") + ylab("4 Star Reviews") + ggtitle("Impact of customer and service reviews on sales volume")
+```
+  
+# Conclusions
+
+* According to the model (_Random Forest, RMSE = 118, R-squared = 0,96, MAE =74_), it can be said that it is predicted to sale ¿1700? Netbooks, X Smartphones, X Laptops and X PCs. 
+* It has been found that the variables which better predict the _Sales Volume_, according our model, are _4Star Reviews_ and _Total Service Reviews_ (a created feature). 
+* It can be observed that customers and service variables are strongly related with sales volume, being two of them the better predictors. 
+* It is recommended to sales department take these predictions carefully. It has been found a lot of problems (small sample, outliers, duplicated values, etc.) in our data set which could affected the model, the results and the predictions. It is required to earn more new data for review this analysis. 
+
